@@ -1,0 +1,288 @@
+substitutions: # Будем использовать как константы
+  name: 'home_toilet_airfreshener'
+  comment: 'Освежитель воздуха (Дом-Туалет)'
+  topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
+  imp_upd_t: '10s' # Интервал обновления для важных параметров
+  not_imp_upd_t: '20s' # Интервал обновления для НЕ важных параметров
+  sleep: '15min' # Длительность режима сна
+  wake: '30s' # Длительность бодрствования
+  work_time: '300ms' # Длительность работы мотора
+  max_click: '800' # Количество пшиков в балоне, обычно 800
+
+esphome:
+  name: ${name}
+  comment: ${comment}
+  platform: ESP8266
+  board: esp_wroom_02
+
+wifi:
+  ssid: !secret ssid
+  password: !secret pass
+  reboot_timeout: 15min
+  fast_connect: true
+  manual_ip:
+    static_ip: 192.168.101.29
+    gateway: 192.168.101.1
+    subnet: 255.255.255.0
+    dns1: 192.168.101.1
+  use_address: 192.168.101.29
+  power_save_mode: light
+
+logger:
+  baud_rate: 0
+
+ota:
+
+# ------------------------------------------------------------------------------
+
+# MQTT
+mqtt:
+  broker: !secret mqtt_ip
+  username: !secret mqtt_login
+  password: !secret mqtt_pass
+  topic_prefix: ${topic}
+  birth_message:
+  will_message:
+  on_message:
+
+    # Чтение после сна - была ли нажата кнопка (Кнопка)
+    - topic: ${topic}/button/${name}_button/command
+      payload: 'PRESS'
+      then:
+        - button.press: virtual_button
+
+    # Чтение после сна - была ли нажата кнопка (Турбо-кнопка)
+    - topic: ${topic}/button/${name}_button_turbo/command
+      payload: 'PRESS'
+      then:
+        - button.press: virtual_button_turbo
+
+    # Чтение после сна - была ли нажата кнопка (Отключение сна)
+    - topic: ${topic}/button/${name}_deepsleep_stop/command
+      payload: 'PRESS'
+      then:
+        - button.press: deep_sleep_mode_stop
+
+    # Чтение после сна - была ли нажата кнопка (Кнопка сброса счетчика)
+    - topic: ${topic}/${name}_button_count_reset/command
+      payload: 'PRESS'
+      then:
+        - button.press: virtual_button_count_reset
+
+# ------------------------------------------------------------------------------
+
+# Глубокий сон
+deep_sleep:
+  run_duration: ${wake}
+  sleep_duration: ${sleep}
+  id: deep_sleep_mode
+
+# ------------------------------------------------------------------------------
+
+switch:
+
+  # Пин управляющий мотором (транзистором или реле)
+  - platform: gpio
+    name: ${name}_motor
+    pin: GPIO5
+    restore_mode: ALWAYS_OFF
+    id: motor
+    internal: true
+
+# ------------------------------------------------------------------------------
+
+number:
+
+  # Счетчик пшиков
+  - platform: template
+    name: click_count
+    id: click_count
+    optimistic: true
+    min_value: 0
+    max_value: ${max_click}
+    step: 1
+    restore_value: true
+    internal: true
+
+# ------------------------------------------------------------------------------
+
+sensor:
+  
+  # Заряд аккумулятора
+  - platform: adc
+    pin: A0 # аналоговый пин
+    name: ${name}_battery_voltage
+    id: ${name}_battery_voltage
+    update_interval: ${not_imp_upd_t}
+    filters:
+      - multiply: 4.11 # Вычислить с помощью мультиметра
+
+  # Заряд аккумулятора в процентах
+  - platform: template
+    name: ${name}_battery_level
+    device_class: battery
+    state_class: measurement
+    unit_of_measurement: "%"
+    update_interval: ${not_imp_upd_t}
+    accuracy_decimals: 0
+    lambda: |-
+      return ((id(${name}_battery_voltage).state));
+    filters:
+      - filter_out: nan
+      - calibrate_polynomial:
+         degree: 3
+         # На глаз с картинки графика :-)
+         datapoints:
+         - 0.00 -> 0.0
+         - 3.00 -> 0.0
+         - 3.20 -> 5.0
+         - 3.35 -> 10.0
+         - 3.45 -> 15.0
+         - 3.50 -> 20.0
+         - 3.52 -> 25.0
+         - 3.55 -> 30.0
+         - 3.59 -> 35.0
+         - 3.62 -> 40.0
+         - 3.65 -> 45.0
+         - 3.67 -> 50.0
+         - 3.71 -> 55.0
+         - 3.78 -> 60.0
+         - 3.80 -> 65.0
+         - 3.85 -> 70.0
+         - 3.90 -> 75.0
+         - 3.95 -> 80.0
+         - 4.00 -> 85.0
+         - 4.03 -> 90.0
+         - 4.10 -> 95.0
+         - 4.20 -> 100.0
+
+  # Уровень балона в процентах
+  - platform: template
+    name: ${name}_balloon_level
+    icon: mdi:gas-cylinder
+    state_class: measurement
+    unit_of_measurement: "%"
+    update_interval: ${imp_upd_t}
+    accuracy_decimals: 0
+    lambda: |-
+      return ((id(click_count).state));
+    filters:
+      - filter_out: nan
+      - calibrate_polynomial:
+         degree: 3
+         datapoints:
+         - 0 -> 100.0
+         - 200 -> 75.0
+         - 400 -> 50.0
+         - 600 -> 25.0
+         - 800 -> 0.0
+
+  # Счетчик пшиков
+  - platform: template
+    name: ${name}_click_count
+    state_class: measurement
+    icon: mdi:counter
+    update_interval: ${imp_upd_t}
+    accuracy_decimals: 0
+    lambda: |-
+      return ((id(click_count).state));
+
+# ------------------------------------------------------------------------------
+
+# Виртуальные кнопки
+button:
+
+  # Кнопка пшика
+  - platform: template
+    name: ${name}_button
+    id: virtual_button
+    on_press:
+      - logger.log: 'Button pressed!'
+      - switch.turn_on: motor
+      - delay: ${work_time} # подбирается индивидуально
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button/command
+          payload:
+          retain: true
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button_turbo/command
+          payload:
+          retain: true
+    internal: true
+
+  # Турбо кнопка
+  - platform: template
+    name: ${name}_button_turbo
+    id: virtual_button_turbo
+    on_press:
+      - logger.log: 'Button Turbo pressed!'
+      - switch.turn_on: motor
+      - delay: ${work_time}
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      - delay: 1s
+      - switch.turn_on: motor
+      - delay: ${work_time}
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      - delay: 1s
+      - switch.turn_on: motor
+      - delay: ${work_time}
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button/command
+          payload:
+          retain: true
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button_turbo/command
+          payload:
+          retain: true
+    internal: true
+
+  # Кнопка остановки deep sleep
+  - platform: template
+    name: ${name}_deepsleep_stop
+    id: deep_sleep_mode_stop
+    on_press:
+      - logger.log: 'Button Deep Sleep Stop pressed!'
+      - deep_sleep.prevent: deep_sleep_mode
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_deepsleep_stop/command
+          payload:
+          retain: true
+    internal: true
+
+  # Кнопка сброса счетчика
+  - platform: template
+    name: ${name}_button_count_reset
+    icon: mdi:restore-alert
+    id: virtual_button_count_reset
+    on_press:
+      - logger.log: 'Button Count Reset pressed!'
+      - number.to_min:
+          id: click_count
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/${name}_button_count_reset/command
+          payload:
+          retain: true
+    internal: true
+
+  # Кнопка перезагрузки
+  - platform: restart
+    name: ${name}_reboot
+    icon: mdi:restart
+
+# ------------------------------------------------------------------------------
