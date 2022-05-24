@@ -1,0 +1,24 @@
+button:
+  - platform: mqtt
+    name: home_toilet_airfreshener_button
+    icon: mdi:spray
+    command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button/command'
+    retain: true
+
+  - platform: mqtt
+    name: home_toilet_airfreshener_button_turbo
+    icon: mdi:spray
+    command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button_turbo/command'
+    retain: true
+
+  - platform: mqtt
+    name: home_toilet_airfreshener_deepsleep_stop
+    icon: mdi:sleep-off
+    command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_deepsleep_stop/command'
+    retain: true
+
+  - platform: mqtt
+    name: home_toilet_airfreshener_button_count_reset
+    icon: mdi:restore-alert
+    command_topic: 'esphome/home/toilet/airfreshener/home_toilet_airfreshener_button_count_reset/command'
+    retain: true
