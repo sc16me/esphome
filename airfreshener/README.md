@@ -2,13 +2,13 @@
 
 Освежитель воздуха на ESP
 
-![Схема:](https://github.com/sc16me/esphome/tree/main/airfreshener/scheme.png)
+![Схема:](scheme.png)
 
 ESP
 
 Аккумулятор
 
-Транзистор p3055ldg
+Транзистор
 
 Резистор 100ом
 
