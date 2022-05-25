@@ -2,9 +2,11 @@
 
 Освежитель воздуха на ESP
 
-Используется плата WROOM 02
+![Схема:](https://github.com/sc16me/esphome/tree/main/airfreshener/scheme.png)
 
-Аккумулятор 18650
+ESP
+
+Аккумулятор
 
 Транзистор p3055ldg
 
