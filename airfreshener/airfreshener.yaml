@@ -7,7 +7,7 @@ substitutions: # Будем использовать как константы
   sleep: '15min' # Длительность режима сна
   wake: '30s' # Длительность бодрствования
   work_time: '300ms' # Длительность работы мотора
-  max_click: '2400' # Количество пшиков в балоне (Airwick 2400)
+  max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
 
 esphome:
   name: ${name}
@@ -169,13 +169,10 @@ sensor:
     filters:
       - filter_out: nan
       - calibrate_polynomial:
-         degree: 3
+         degree: 1
          datapoints:
          - 0 -> 100.0
-         - 600 -> 75.0
-         - 1200 -> 50.0
-         - 1800 -> 25.0
-         - 2400 -> 0.0
+         - ${max_click} -> 0.0
 
   # Счетчик пшиков
   - platform: template
