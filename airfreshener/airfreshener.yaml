@@ -14,6 +14,7 @@ esphome:
   comment: ${comment}
   platform: ESP8266
   board: esp12e
+  esp8266_restore_from_flash: true
 
 wifi:
   ssid: !secret ssid
@@ -45,25 +46,19 @@ mqtt:
   will_message:
   on_message:
 
-    # Чтение после сна - была ли нажата кнопка (Кнопка)
+    # Чтение состояния - была ли нажата кнопка (Кнопка)
     - topic: ${topic}/button/${name}_button/command
       payload: 'PRESS'
       then:
         - button.press: virtual_button
 
-    # Чтение после сна - была ли нажата кнопка (Турбо-кнопка)
-    - topic: ${topic}/button/${name}_button_turbo/command
-      payload: 'PRESS'
-      then:
-        - button.press: virtual_button_turbo
-
-    # Чтение после сна - была ли нажата кнопка (Отключение сна)
+    # Чтение состояния - была ли нажата кнопка (Отключение сна)
     - topic: ${topic}/button/${name}_deepsleep_stop/command
       payload: 'PRESS'
       then:
         - button.press: deep_sleep_mode_stop
 
-    # Чтение после сна - была ли нажата кнопка (Кнопка сброса счетчика)
+    # Чтение состояния - была ли нажата кнопка (Кнопка сброса счетчика)
     - topic: ${topic}/${name}_button_count_reset/command
       payload: 'PRESS'
       then:
@@ -212,46 +207,6 @@ button:
       # Стираем состояние кнопки после выполнения
       - mqtt.publish:
           topic: ${topic}/button/${name}_button/command
-          payload:
-          retain: true
-      # Стираем состояние кнопки после выполнения
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button_turbo/command
-          payload:
-          retain: true
-    internal: true
-
-  # Турбо кнопка
-  - platform: template
-    name: ${name}_button_turbo
-    id: virtual_button_turbo
-    on_press:
-      - logger.log: 'Button Turbo pressed!'
-      - switch.turn_on: motor
-      - delay: ${work_time}
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      - delay: 1s
-      - switch.turn_on: motor
-      - delay: ${work_time}
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      - delay: 1s
-      - switch.turn_on: motor
-      - delay: ${work_time}
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      # Стираем состояние кнопки после выполнения
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button/command
-          payload:
-          retain: true
-      # Стираем состояние кнопки после выполнения
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button_turbo/command
           payload:
           retain: true
     internal: true
