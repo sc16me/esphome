@@ -6,14 +6,14 @@ substitutions: # Будем использовать как константы
   not_imp_upd_t: '20s' # Интервал обновления для НЕ важных параметров
   sleep: '15min' # Длительность режима сна
   wake: '30s' # Длительность бодрствования
-  work_time: '300ms' # Длительность работы мотора
-  max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
+  work_time: '110ms' # Длительность работы мотора (подбирается индивидуально)
+  max_click: '2400' # Количество пшиков в балоне (Airwick 2400)
 
 esphome:
   name: ${name}
   comment: ${comment}
   platform: ESP8266
-  board: esp_wroom_02
+  board: esp12e
 
 wifi:
   ssid: !secret ssid
@@ -84,7 +84,7 @@ switch:
   # Пин управляющий мотором (транзистором или реле)
   - platform: gpio
     name: ${name}_motor
-    pin: GPIO5
+    pin: GPIO14
     restore_mode: ALWAYS_OFF
     id: motor
     internal: true
@@ -110,12 +110,20 @@ sensor:
   
   # Заряд аккумулятора
   - platform: adc
-    pin: A0 # аналоговый пин
+    pin: VCC
     name: ${name}_battery_voltage
     id: ${name}_battery_voltage
     update_interval: ${not_imp_upd_t}
+    on_value_range:
+      below: 3.00
+      then:
+        - button.press: ${name}_shutdown
+        - logger.log: 'Button Shutdown pressed!'
     filters:
-      - multiply: 4.11 # Вычислить с помощью мультиметра
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+      - multiply: 0.96 # погрешность
 
   # Заряд аккумулятора в процентах
   - platform: template
@@ -130,31 +138,32 @@ sensor:
     filters:
       - filter_out: nan
       - calibrate_polynomial:
-         degree: 3
-         # На глаз с картинки графика :-)
+         degree: 2
+         # На глаз с картинки графика LG HE4 :-)
          datapoints:
-         - 0.00 -> 0.0
-         - 3.00 -> 0.0
-         - 3.20 -> 5.0
-         - 3.35 -> 10.0
-         - 3.45 -> 15.0
-         - 3.50 -> 20.0
-         - 3.52 -> 25.0
-         - 3.55 -> 30.0
-         - 3.59 -> 35.0
-         - 3.62 -> 40.0
-         - 3.65 -> 45.0
-         - 3.67 -> 50.0
-         - 3.71 -> 55.0
-         - 3.78 -> 60.0
-         - 3.80 -> 65.0
-         - 3.85 -> 70.0
-         - 3.90 -> 75.0
-         - 3.95 -> 80.0
-         - 4.00 -> 85.0
-         - 4.03 -> 90.0
-         - 4.10 -> 95.0
-         - 4.20 -> 100.0
+          - 0.00 -> 0.0
+          - 3.00 -> 0.0
+          - 3.20 -> 5.0
+          - 3.35 -> 10.0
+          - 3.45 -> 15.0
+          - 3.50 -> 20.0
+          - 3.52 -> 25.0
+          - 3.55 -> 30.0
+          - 3.59 -> 35.0
+          - 3.62 -> 40.0
+          - 3.65 -> 45.0
+          - 3.67 -> 50.0
+          - 3.71 -> 55.0
+          - 3.78 -> 60.0
+          - 3.80 -> 65.0
+          - 3.85 -> 70.0
+          - 3.90 -> 75.0
+          - 3.95 -> 80.0
+          - 4.00 -> 85.0
+          - 4.03 -> 90.0
+          - 4.10 -> 95.0
+          - 4.20 -> 100.0
+          - 4.25 -> 100.0
 
   # Уровень балона в процентах
   - platform: template
@@ -281,5 +290,11 @@ button:
   - platform: restart
     name: ${name}_reboot
     icon: mdi:restart
+
+  # Кнопка выключения
+  - platform: shutdown
+    name: ${name}_shutdown
+    id: ${name}_shutdown
+    internal: true
 
 # ------------------------------------------------------------------------------
