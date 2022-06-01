@@ -6,8 +6,10 @@ substitutions: # Будем использовать как константы
   not_imp_upd_t: '20s' # Интервал обновления для НЕ важных параметров
   sleep: '15min' # Длительность режима сна
   wake: '30s' # Длительность бодрствования
-  work_time: '110ms' # Длительность работы мотора (подбирается индивидуально)
   max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
+  min_motor_time: '10' # Минимальное время работы мотора
+  max_motor_time: '120' # Максимальное время работы мотора
+  step_motor_time: '10' # Шаг слайдера времени работы мотора
 
 esphome:
   name: ${name}
@@ -105,6 +107,17 @@ number:
     restore_value: true
     internal: true
 
+  # Слайдер времени работы мотора при пшыке
+  - platform: template
+    name: ${name}_motor_time
+    id: ${name}_motor_time
+    icon: mdi:timer-cog
+    optimistic: true
+    min_value: ${min_motor_time}
+    max_value: ${max_motor_time}
+    step: ${step_motor_time}
+    restore_value: true
+    
 # ------------------------------------------------------------------------------
 
 sensor:
@@ -206,7 +219,7 @@ button:
     on_press:
       - logger.log: 'Button pressed!'
       - switch.turn_on: motor
-      - delay: ${work_time} # подбирается индивидуально
+      - delay: !lambda "return (id(${name}_motor_time).state);"
       - switch.turn_off: motor
       # Добавляем нажатие в счетчик
       - number.increment: click_count
@@ -229,19 +242,19 @@ button:
     on_press:
       - logger.log: 'Button Turbo pressed!'
       - switch.turn_on: motor
-      - delay: ${work_time}
+      - delay: !lambda "return (id(${name}_motor_time).state);"
       - switch.turn_off: motor
       # Добавляем нажатие в счетчик
       - number.increment: click_count
       - delay: 1s
       - switch.turn_on: motor
-      - delay: ${work_time}
+      - delay: !lambda "return (id(${name}_motor_time).state);"
       - switch.turn_off: motor
       # Добавляем нажатие в счетчик
       - number.increment: click_count
       - delay: 1s
       - switch.turn_on: motor
-      - delay: ${work_time}
+      - delay: !lambda "return (id(${name}_motor_time).state);"
       - switch.turn_off: motor
       # Добавляем нажатие в счетчик
       - number.increment: click_count
