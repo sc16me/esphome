@@ -7,7 +7,7 @@ substitutions: # Будем использовать как константы
   sleep: '15min' # Длительность режима сна
   wake: '30s' # Длительность бодрствования
   work_time: '110ms' # Длительность работы мотора (подбирается индивидуально)
-  max_click: '2400' # Количество пшиков в балоне (Airwick 2400)
+  max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
 
 esphome:
   name: ${name}
@@ -51,6 +51,12 @@ mqtt:
       payload: 'PRESS'
       then:
         - button.press: virtual_button
+
+    # Чтение состояния - была ли нажата кнопка (Турбо-кнопка)
+    - topic: ${topic}/button/${name}_button_turbo/command
+      payload: 'PRESS'
+      then:
+        - button.press: virtual_button_turbo
 
     # Чтение состояния - была ли нажата кнопка (Отключение сна)
     - topic: ${topic}/button/${name}_deepsleep_stop/command
@@ -193,7 +199,7 @@ sensor:
 # Виртуальные кнопки
 button:
 
-  # Кнопка пшика
+  # Кнопка
   - platform: template
     name: ${name}_button
     id: virtual_button
@@ -207,6 +213,46 @@ button:
       # Стираем состояние кнопки после выполнения
       - mqtt.publish:
           topic: ${topic}/button/${name}_button/command
+          payload:
+          retain: true
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button_turbo/command
+          payload:
+          retain: true
+    internal: true
+
+  # Турбо кнопка
+  - platform: template
+    name: ${name}_button_turbo
+    id: virtual_button_turbo
+    on_press:
+      - logger.log: 'Button Turbo pressed!'
+      - switch.turn_on: motor
+      - delay: ${work_time}
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      - delay: 1s
+      - switch.turn_on: motor
+      - delay: ${work_time}
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      - delay: 1s
+      - switch.turn_on: motor
+      - delay: ${work_time}
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button/command
+          payload:
+          retain: true
+      # Стираем состояние кнопки после выполнения
+      - mqtt.publish:
+          topic: ${topic}/button/${name}_button_turbo/command
           payload:
           retain: true
     internal: true
