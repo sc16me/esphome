@@ -139,7 +139,7 @@ sensor:
           send_every: 1
       - multiply: 0.96 # погрешность
 
-  # Заряд аккумулятора в процентах
+  # Заряд аккумулятора в процентах (показометр)
   - platform: template
     name: ${name}_battery_level
     device_class: battery
@@ -151,33 +151,7 @@ sensor:
       return ((id(${name}_battery_voltage).state));
     filters:
       - filter_out: nan
-      - calibrate_polynomial:
-         degree: 2
-         # На глаз с картинки графика LG HE4 :-)
-         datapoints:
-          - 0.00 -> 0.0
-          - 3.00 -> 0.0
-          - 3.20 -> 5.0
-          - 3.35 -> 10.0
-          - 3.45 -> 15.0
-          - 3.50 -> 20.0
-          - 3.52 -> 25.0
-          - 3.55 -> 30.0
-          - 3.59 -> 35.0
-          - 3.62 -> 40.0
-          - 3.65 -> 45.0
-          - 3.67 -> 50.0
-          - 3.71 -> 55.0
-          - 3.78 -> 60.0
-          - 3.80 -> 65.0
-          - 3.85 -> 70.0
-          - 3.90 -> 75.0
-          - 3.95 -> 80.0
-          - 4.00 -> 85.0
-          - 4.03 -> 90.0
-          - 4.10 -> 95.0
-          - 4.20 -> 100.0
-          - 4.25 -> 100.0
+      - lambda: return ((x - 3.0) / (4.2 - 3.0)) * 100;
 
   # Уровень балона в процентах
   - platform: template
@@ -191,11 +165,7 @@ sensor:
       return ((id(click_count).state));
     filters:
       - filter_out: nan
-      - calibrate_polynomial:
-         degree: 1
-         datapoints:
-         - 0 -> 100.0
-         - ${max_click} -> 0.0
+      - lambda: return ((((x - 0) / (${max_click} - 0)) * 100 ) -100) * -1;
 
   # Счетчик пшиков
   - platform: template
