@@ -1,0 +1,27 @@
+alias: Освежитель воздуха - Пись-пись
+description: ''
+trigger:
+  - platform: state
+    entity_id:
+      - switch.home_toilet_switch
+    from: 'off'
+    to: 'on'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 20
+condition: []
+action:
+  - wait_for_trigger:
+      - platform: state
+        entity_id:
+          - switch.home_toilet_switch
+        from: 'on'
+        to: 'off'
+    continue_on_timeout: false
+    timeout: '00:01:59'
+  - service: button.press
+    data: {}
+    target:
+      entity_id: button.home_toilet_airfreshener_button
+mode: restart
