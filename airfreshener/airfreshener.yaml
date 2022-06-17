@@ -41,7 +41,7 @@ mqtt:
   broker: !secret mqtt_ip
   username: !secret mqtt_login
   password: !secret mqtt_pass
-  reboot_timeout: 0s # отключаем бесконечный ребут при остутвии подключения к MQTT
+  reboot_timeout: 0s # отключаем бесконечный ребут при отсутствии подключения к MQTT
   topic_prefix: ${topic}
   birth_message:
   will_message:
