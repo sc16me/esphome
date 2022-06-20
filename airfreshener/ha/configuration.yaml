@@ -23,3 +23,9 @@ mqtt:
       icon: mdi:restore-alert
       command_topic: 'esphome/home/toilet/airfreshener/home_toilet_airfreshener_button_count_reset/command'
       retain: true
+
+binary_sensor:
+  - platform: tod
+    name: night
+    after: '03:00'
+    before: '07:00'

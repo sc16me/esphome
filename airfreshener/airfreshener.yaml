@@ -2,9 +2,12 @@ substitutions: # Будем использовать как константы
   name: 'home_toilet_airfreshener'
   comment: 'Освежитель воздуха (Дом-Туалет)'
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
+  night_topic: 'mqtt/night' # Откуда брать статус ночь
   update_time: '1s' # Интервал обновления для параметров
   sleep: '15min' # Длительность режима сна
   wake: '3s' # Длительность бодрствования
+  night_sleep: '60min' # Длительность режима сна ночью
+  night_wake: '2400ms' # Длительность бодрствования ночью (должна быть короче обычного режима)
   max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
   min_motor_time: '10' # Минимальное время работы мотора в мс
   max_motor_time: '120' # Максимальное время работы мотора в мс
@@ -41,7 +44,7 @@ mqtt:
   broker: !secret mqtt_ip
   username: !secret mqtt_login
   password: !secret mqtt_pass
-  reboot_timeout: 0s
+  reboot_timeout: 0s # отключаем бесконечный ребут при отсутствии подключения к MQTT
   topic_prefix: ${topic}
   birth_message:
   will_message:
@@ -73,6 +76,22 @@ mqtt:
       payload: 'PRESS'
       then:
         - button.press: virtual_button_count_reset
+
+    # Чтение состояния - ночь
+    - topic: ${night_topic}
+      payload: 'ON'
+      then:
+        - if:
+            condition:
+              lambda: 'return id(check_sleep_button).state;'
+            then:
+              - logger.log: 'Stay awake because the sleep button is pressed'
+            else:
+              - delay: ${night_wake}
+              - logger.log: 'Night, I can sleep a little longer...'
+              - deep_sleep.enter:
+                  id: deep_sleep_mode
+                  sleep_duration: ${night_sleep}
 
 # ------------------------------------------------------------------------------
 
@@ -148,8 +167,8 @@ sensor:
     on_value_range:
       below: 3.00
       then:
-        - button.press: ${name}_shutdown
         - logger.log: 'Button Shutdown pressed!'
+        - button.press: ${name}_shutdown
 
   # Заряд аккумулятора в процентах (показометр)
   - platform: template
