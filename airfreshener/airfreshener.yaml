@@ -6,9 +6,9 @@ substitutions: # Будем использовать как константы
   sleep: '15min' # Длительность режима сна
   wake: '3s' # Длительность бодрствования
   max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
-  min_motor_time: '10' # Минимальное время работы мотора
-  max_motor_time: '120' # Максимальное время работы мотора
-  step_motor_time: '10' # Шаг слайдера времени работы мотора
+  min_motor_time: '10' # Минимальное время работы мотора в мс
+  max_motor_time: '120' # Максимальное время работы мотора в мс
+  step_motor_time: '10' # Шаг слайдера времени работы мотора в мс
 
 esphome:
   name: ${name}
@@ -41,11 +41,20 @@ mqtt:
   broker: !secret mqtt_ip
   username: !secret mqtt_login
   password: !secret mqtt_pass
-  reboot_timeout: 0s # отключаем бесконечный ребут при отсутствии подключения к MQTT
+  reboot_timeout: 0s
   topic_prefix: ${topic}
   birth_message:
   will_message:
   on_message:
+
+    # Чтение состояния - была ли нажата кнопка (Отключение сна)
+    - topic: ${topic}/button/${name}_deepsleep_stop/command
+      payload: 'PRESS'
+      then:
+        - button.press: deep_sleep_mode_stop
+        - binary_sensor.template.publish:
+            id: check_sleep_button
+            state: ON
 
     # Чтение состояния - была ли нажата кнопка (Кнопка)
     - topic: ${topic}/button/${name}_button/command
@@ -59,12 +68,6 @@ mqtt:
       then:
         - button.press: virtual_button_turbo
 
-    # Чтение состояния - была ли нажата кнопка (Отключение сна)
-    - topic: ${topic}/button/${name}_deepsleep_stop/command
-      payload: 'PRESS'
-      then:
-        - button.press: deep_sleep_mode_stop
-
     # Чтение состояния - была ли нажата кнопка (Кнопка сброса счетчика)
     - topic: ${topic}/${name}_button_count_reset/command
       payload: 'PRESS'
@@ -75,9 +78,9 @@ mqtt:
 
 # Глубокий сон
 deep_sleep:
-  run_duration: ${wake}
-  sleep_duration: ${sleep}
   id: deep_sleep_mode
+  sleep_duration: ${sleep}
+  run_duration: ${wake}
 
 # ------------------------------------------------------------------------------
 
@@ -86,9 +89,9 @@ switch:
   # Пин управляющий мотором (транзистором или реле)
   - platform: gpio
     name: ${name}_motor
+    id: motor
     pin: GPIO14
     restore_mode: ALWAYS_OFF
-    id: motor
     internal: true
 
 # ------------------------------------------------------------------------------
@@ -119,6 +122,16 @@ number:
     
 # ------------------------------------------------------------------------------
 
+binary_sensor:
+
+  # Сенсор нажатия кнопоки сна
+  - platform: template
+    name: check_sleep_button
+    id: check_sleep_button
+    internal: true
+
+# ------------------------------------------------------------------------------
+
 sensor:
   
   # Заряд аккумулятора
@@ -127,16 +140,16 @@ sensor:
     name: ${name}_battery_voltage
     id: ${name}_battery_voltage
     update_interval: ${update_time}
-    on_value_range:
-      below: 3.00
-      then:
-        - button.press: ${name}_shutdown
-        - logger.log: 'Button Shutdown pressed!'
     filters:
       - sliding_window_moving_average:
           window_size: 3
           send_every: 1
       - multiply: 0.96 # погрешность
+    on_value_range:
+      below: 3.00
+      then:
+        - button.press: ${name}_shutdown
+        - logger.log: 'Button Shutdown pressed!'
 
   # Заряд аккумулятора в процентах (показометр)
   - platform: template
@@ -187,11 +200,6 @@ button:
     id: virtual_button
     on_press:
       - logger.log: 'Button pressed!'
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
       # Стираем состояние кнопки после выполнения
       - mqtt.publish:
           topic: ${topic}/button/${name}_button/command
@@ -202,8 +210,19 @@ button:
           topic: ${topic}/button/${name}_button_turbo/command
           payload:
           retain: true
-      # Уходим спать сразу после пшика
-      - deep_sleep.enter: deep_sleep_mode
+      - switch.turn_on: motor
+      - delay: !lambda "return (id(${name}_motor_time).state);"
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      # Уходим спать сразу после пшика если режим сна не отключен
+      - if:
+          condition:
+            lambda: 'return id(check_sleep_button).state;'
+          then:
+            - logger.log: 'Stay awake because the sleep button is pressed'
+          else:
+            - deep_sleep.enter: deep_sleep_mode
     internal: true
 
   # Турбо кнопка
@@ -212,23 +231,6 @@ button:
     id: virtual_button_turbo
     on_press:
       - logger.log: 'Button Turbo pressed!'
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      - delay: 1s
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      - delay: 1s
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
       # Стираем состояние кнопки после выполнения
       - mqtt.publish:
           topic: ${topic}/button/${name}_button/command
@@ -239,8 +241,31 @@ button:
           topic: ${topic}/button/${name}_button_turbo/command
           payload:
           retain: true
-      # Уходим спать сразу после пшика
-      - deep_sleep.enter: deep_sleep_mode
+      - switch.turn_on: motor
+      - delay: !lambda "return (id(${name}_motor_time).state);"
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      - delay: 1s
+      - switch.turn_on: motor
+      - delay: !lambda "return (id(${name}_motor_time).state);"
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      - delay: 1s
+      - switch.turn_on: motor
+      - delay: !lambda "return (id(${name}_motor_time).state);"
+      - switch.turn_off: motor
+      # Добавляем нажатие в счетчик
+      - number.increment: click_count
+      # Уходим спать сразу после пшика если режим сна не отключен
+      - if:
+          condition:
+            lambda: 'return id(check_sleep_button).state;'
+          then:
+            - logger.log: 'Stay awake because the sleep button is pressed'
+          else:
+            - deep_sleep.enter: deep_sleep_mode
     internal: true
 
   # Кнопка остановки deep sleep
@@ -264,13 +289,13 @@ button:
     id: virtual_button_count_reset
     on_press:
       - logger.log: 'Button Count Reset pressed!'
-      - number.to_min:
-          id: click_count
       # Стираем состояние кнопки после выполнения
       - mqtt.publish:
           topic: ${topic}/${name}_button_count_reset/command
           payload:
           retain: true
+      - number.to_min:
+          id: click_count
     internal: true
 
   # Кнопка перезагрузки
