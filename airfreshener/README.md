@@ -1,6 +1,6 @@
 # airfreshener
 
-Освежитель воздуха на ESP
+Освежитель воздуха Airwick на ESP для Home Assistant
 
 ![Схема:](scheme.png)
 
