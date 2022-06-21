@@ -6,6 +6,7 @@ substitutions: # Будем использовать как константы
   update_time: '1s' # Интервал обновления для параметров
   sleep: '15min' # Длительность режима сна
   wake: '3s' # Длительность бодрствования
+  emergency_wake: '4s' # Длительность бодрствования без Wi-Fi или MQTT
   night_sleep: '60min' # Длительность режима сна ночью
   night_wake: '2400ms' # Длительность бодрствования ночью (должна быть короче обычного режима)
   max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
@@ -19,6 +20,18 @@ esphome:
   platform: ESP8266
   board: esp12e
   esp8266_restore_from_flash: true
+  on_boot:
+    # Идем спать даже если нет подключений к Wi-Fi или MQTT
+    priority: 500
+    then:
+      - delay: ${emergency_wake}
+      - if:
+          condition:
+            binary_sensor.is_off: check_sleep_button
+          then:
+            - logger.log: 'Do cats eat bats? Do cats eat bats?'
+            - logger.log: 'Do bats eat cats?'
+            - deep_sleep.enter: deep_sleep_mode
 
 wifi:
   ssid: !secret ssid
