@@ -15,3 +15,9 @@
 ![Фото 7:](7.jpg)
 
 ![Отладка :-)](Debug.jpg)
+
+![Фото 8:](lovelace.png)
+
+![Фото 9:](voltage.jpg)
+
+![Фото 10:](counter.jpg)
