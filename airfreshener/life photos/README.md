@@ -18,6 +18,6 @@
 
 ![Фото 8:](lovelace.png)
 
-![Фото 9:](voltage.jpg)
+![Фото 9:](voltage.png)
 
-![Фото 10:](counter.jpg)
+![Фото 10:](counter.png)
