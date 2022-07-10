@@ -250,12 +250,12 @@ button:
     id: virtual_button
     on_press:
       - logger.log: 'Button pressed!'
-      # Стираем состояние кнопки после выполнения
+      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
           topic: ${topic}/button/${name}_button/command
           payload:
           retain: true
-      # Стираем состояние кнопки после выполнения
+      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
           topic: ${topic}/button/${name}_button_turbo/command
           payload:
@@ -281,12 +281,12 @@ button:
     id: virtual_button_turbo
     on_press:
       - logger.log: 'Button Turbo pressed!'
-      # Стираем состояние кнопки после выполнения
+      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
           topic: ${topic}/button/${name}_button/command
           payload:
           retain: true
-      # Стираем состояние кнопки после выполнения
+      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
           topic: ${topic}/button/${name}_button_turbo/command
           payload:
@@ -324,7 +324,7 @@ button:
     id: deep_sleep_mode_stop
     on_press:
       - logger.log: 'Button Deep Sleep Stop pressed!'
-      # Стираем состояние кнопки после выполнения
+      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
           topic: ${topic}/button/${name}_deepsleep_stop/command
           payload:
@@ -339,7 +339,7 @@ button:
     id: virtual_button_count_reset
     on_press:
       - logger.log: 'Button Count Reset pressed!'
-      # Стираем состояние кнопки после выполнения
+      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
           topic: ${topic}/button/${name}_button_count_reset/command
           payload:
