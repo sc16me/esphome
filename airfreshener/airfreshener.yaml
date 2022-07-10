@@ -2,7 +2,7 @@ substitutions: # Будем использовать как константы
   name: 'home_toilet_airfreshener'
   comment: 'Освежитель воздуха (Дом-Туалет)'
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
-  night_topic: 'mqtt/night' # Откуда брать статус ночь
+  night_topic: 'mqtt/esphome/home/toilet/airfreshener/night' # Откуда брать статус ночь
   update_time: '1s' # Интервал обновления для параметров
   sleep: '15min' # Длительность режима сна
   wake: '3s' # Длительность бодрствования
@@ -99,7 +99,7 @@ mqtt:
         - button.press: virtual_button_turbo
 
     # Чтение состояния - была ли нажата кнопка (Кнопка сброса счетчика)
-    - topic: ${topic}/${name}_button_count_reset/command
+    - topic: ${topic}/button/${name}_button_count_reset/command
       payload: 'PRESS'
       then:
         - button.press: virtual_button_count_reset
@@ -155,7 +155,7 @@ number:
     restore_value: true
     internal: true
 
-  # Слайдер времени работы мотора при пшыке
+  # Слайдер времени работы мотора при пшике
   - platform: template
     name: ${name}_motor_time
     id: ${name}_motor_time
@@ -187,14 +187,15 @@ sensor:
     id: ${name}_battery_voltage
     update_interval: ${update_time}
     filters:
-      - sliding_window_moving_average:
+      - max:
           window_size: 3
-          send_every: 1
+          send_every: 3
+          send_first_at: 3
       - multiply: 0.96 # погрешность
     on_value_range:
       below: 3.00
       then:
-        - logger.log: 'Button Shutdown pressed!'
+        - logger.log: 'Battery low, shutdown...'
         - button.press: ${name}_shutdown
 
   # Заряд аккумулятора в процентах (показометр)
@@ -210,6 +211,9 @@ sensor:
     filters:
       - filter_out: nan
       - lambda: return ((x - 3.0) / (4.2 - 3.0)) * 100;
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
 
   # Уровень баллона в процентах
   - platform: template
@@ -337,7 +341,7 @@ button:
       - logger.log: 'Button Count Reset pressed!'
       # Стираем состояние кнопки после выполнения
       - mqtt.publish:
-          topic: ${topic}/${name}_button_count_reset/command
+          topic: ${topic}/button/${name}_button_count_reset/command
           payload:
           retain: true
       - number.to_min:
