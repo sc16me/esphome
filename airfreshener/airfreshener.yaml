@@ -2,7 +2,7 @@ substitutions: # Будем использовать как константы
   name: 'home_toilet_airfreshener'
   comment: 'Освежитель воздуха (Дом-Туалет)'
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
-  night_topic: 'mqtt/esphome/home/toilet/airfreshener/night' # Откуда брать статус ночь
+  night_topic: 'esphome/home/toilet/airfreshener/night' # Откуда брать статус ночь
   update_time: '1s' # Интервал обновления для параметров
   sleep: '15min' # Длительность режима сна
   wake: '3s' # Длительность бодрствования
@@ -61,6 +61,9 @@ wifi:
 
 logger:
   baud_rate: 0
+
+mdns:
+  disabled: true
 
 ota:
 
@@ -191,7 +194,7 @@ sensor:
           window_size: 3
           send_every: 3
           send_first_at: 3
-      - multiply: 0.96 # погрешность
+      - multiply: 0.981 # погрешность
     on_value_range:
       below: 3.00
       then:
@@ -211,9 +214,6 @@ sensor:
     filters:
       - filter_out: nan
       - lambda: return ((x - 3.0) / (4.2 - 3.0)) * 100;
-      - sliding_window_moving_average:
-          window_size: 3
-          send_every: 1
 
   # Уровень баллона в процентах
   - platform: template
