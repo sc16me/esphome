@@ -1,32 +1,39 @@
 substitutions: # Будем использовать как константы
-  name: 'home_toilet_airfreshener'
+  name: 'airfreshener'
+  location: 'home'
+  room: 'toilet'
   comment: 'Освежитель воздуха (Дом-Туалет)'
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
-  night_topic: 'esphome/home/toilet/airfreshener/night' # Откуда брать статус ночь
+  night_topic: 'home/mqtt/status/night' # Откуда брать статус ночь
   update_time: '1s' # Интервал обновления для параметров
   sleep: '15min' # Длительность режима сна
   wake: '3s' # Длительность бодрствования
   night_sleep: '60min' # Длительность режима сна ночью
-  night_wake: '2400ms' # Длительность бодрствования ночью (должна быть короче обычного режима)
   max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
   min_motor_time: '10' # Минимальное время работы мотора в мс
-  max_motor_time: '120' # Максимальное время работы мотора в мс
+  max_motor_time: '180' # Максимальное время работы мотора в мс
   step_motor_time: '10' # Шаг слайдера времени работы мотора в мс
 
 esphome:
   name: ${name}
   comment: ${comment}
+
+  project:
+      name: "Santa-Claus_16.AirFreshener"
+      version: "1.1"
+
   platform: ESP8266
-  board: esp12e
+  board: esp01_1m
   esp8266_restore_from_flash: true
+
   on_boot:
     # Идем спать даже если нет подключений к Wi-Fi или MQTT
     priority: 500
     then:
-      - wait_until: # ждем подключения по Wi-Fi
+      - wait_until: # Ждем подключения по Wi-Fi
           condition:
             wifi.connected:
-          timeout: 5s # максимум 5 секунд
+          timeout: 5s # Максимум 5 секунд
       - if:
           condition:
             not:
@@ -35,10 +42,10 @@ esphome:
             - logger.log: 'Do cats eat bats? Do cats eat bats?'
             - deep_sleep.enter: deep_sleep_mode
           else:
-            - wait_until: # ждем подключения к MQTT
+            - wait_until: # Ждем подключения к MQTT
                 condition:
                   mqtt.connected:
-                timeout: 5s # максимум 5 секунд
+                timeout: 5s # Максимум 5 секунд
             - if:
                 condition:
                   not:
@@ -62,9 +69,6 @@ wifi:
 logger:
   baud_rate: 0
 
-mdns:
-  disabled: true
-
 ota:
 
 # ------------------------------------------------------------------------------
@@ -74,14 +78,15 @@ mqtt:
   broker: !secret mqtt_ip
   username: !secret mqtt_login
   password: !secret mqtt_pass
-  reboot_timeout: 0s # отключаем бесконечный ребут при отсутствии подключения к MQTT
+  reboot_timeout: 0s # Отключаем бесконечный ребут при отсутствии подключения к MQTT
   topic_prefix: ${topic}
   birth_message:
   will_message:
+
   on_message:
 
     # Чтение состояния - была ли нажата кнопка (Отключение сна)
-    - topic: ${topic}/button/${name}_deepsleep_stop/command
+    - topic: ${topic}/button/deepsleep_stop/command
       payload: 'PRESS'
       then:
         - button.press: deep_sleep_mode_stop
@@ -90,19 +95,19 @@ mqtt:
             state: ON
 
     # Чтение состояния - была ли нажата кнопка (Кнопка)
-    - topic: ${topic}/button/${name}_button/command
+    - topic: ${topic}/button/button/command
       payload: 'PRESS'
       then:
         - button.press: virtual_button
 
     # Чтение состояния - была ли нажата кнопка (Турбо-кнопка)
-    - topic: ${topic}/button/${name}_button_turbo/command
+    - topic: ${topic}/button/button_turbo/command
       payload: 'PRESS'
       then:
         - button.press: virtual_button_turbo
 
     # Чтение состояния - была ли нажата кнопка (Кнопка сброса счетчика)
-    - topic: ${topic}/button/${name}_button_count_reset/command
+    - topic: ${topic}/button/button_count_reset/command
       payload: 'PRESS'
       then:
         - button.press: virtual_button_count_reset
@@ -117,7 +122,7 @@ mqtt:
             then:
               - logger.log: 'Stay awake because the sleep button is pressed'
             else:
-              - delay: ${night_wake}
+              - delay: ${wake}
               - logger.log: 'Night, I can sleep a little longer...'
               - deep_sleep.enter:
                   id: deep_sleep_mode
@@ -133,11 +138,20 @@ deep_sleep:
 
 # ------------------------------------------------------------------------------
 
+globals:
+
+  # Счетчик пшиков
+  - id: click_count
+    type: int
+    restore_value: yes
+
+# ------------------------------------------------------------------------------
+
 switch:
 
-  # Пин управляющий мотором (транзистором или реле)
+  # Пин управляющий мотором (транзистором)
   - platform: gpio
-    name: ${name}_motor
+    name: motor
     id: motor
     pin: GPIO14
     restore_mode: ALWAYS_OFF
@@ -147,27 +161,17 @@ switch:
 
 number:
 
-  # Счетчик пшиков
-  - platform: template
-    name: click_count
-    id: click_count
-    optimistic: true
-    min_value: 0
-    max_value: ${max_click}
-    step: 1
-    restore_value: true
-    internal: true
-
   # Слайдер времени работы мотора при пшике
   - platform: template
-    name: ${name}_motor_time
-    id: ${name}_motor_time
+    name: ${location}_${room}_${name}_motor_time
+    id: motor_time
     icon: mdi:timer-cog
     optimistic: true
     min_value: ${min_motor_time}
     max_value: ${max_motor_time}
     step: ${step_motor_time}
     restore_value: true
+    entity_category: "diagnostic"
     
 # ------------------------------------------------------------------------------
 
@@ -186,58 +190,72 @@ sensor:
   # Заряд аккумулятора
   - platform: adc
     pin: VCC
-    name: ${name}_battery_voltage
-    id: ${name}_battery_voltage
+    name: ${location}_${room}_${name}_battery_voltage
+    id: battery_voltage
     update_interval: ${update_time}
     filters:
       - max:
           window_size: 3
           send_every: 3
           send_first_at: 3
-      - multiply: 0.981 # погрешность
+      - multiply: 0.981 # Погрешность
     on_value_range:
       below: 3.00
       then:
         - logger.log: 'Battery low, shutdown...'
-        - button.press: ${name}_shutdown
+        - button.press: halt
 
   # Заряд аккумулятора в процентах (показометр)
   - platform: template
-    name: ${name}_battery_level
+    name: ${location}_${room}_${name}_battery_level
     device_class: battery
     state_class: measurement
     unit_of_measurement: "%"
     update_interval: ${update_time}
     accuracy_decimals: 0
     lambda: |-
-      return ((id(${name}_battery_voltage).state));
+      return ((id(battery_voltage).state));
     filters:
       - filter_out: nan
       - lambda: return ((x - 3.0) / (4.2 - 3.0)) * 100;
 
   # Уровень баллона в процентах
   - platform: template
-    name: ${name}_balloon_level
+    name: ${location}_${room}_${name}_balloon_level
     icon: mdi:gas-cylinder
     state_class: measurement
     unit_of_measurement: "%"
     update_interval: ${update_time}
     accuracy_decimals: 0
     lambda: |-
-      return ((id(click_count).state));
+      return id(click_count);
     filters:
       - filter_out: nan
-      - lambda: return ((((x - 0) / (${max_click} - 0)) * 100 ) -100) * -1;
+      - lambda: return ((((x - 0) / (${max_click} - 0)) * 100) -100) * -1;
 
   # Счетчик пшиков
   - platform: template
-    name: ${name}_click_count
+    name: ${location}_${room}_${name}_click_count
     state_class: measurement
     icon: mdi:counter
     update_interval: ${update_time}
     accuracy_decimals: 0
     lambda: |-
-      return ((id(click_count).state));
+      return id(click_count);
+
+  # Счетчик пшиков - коррекция
+  - platform: mqtt_subscribe
+    name: click_count_correction
+    id: click_count_correction
+    topic: ${topic}/click_count_correction
+    on_value:
+      then:
+        - lambda: |-
+            if (x >= 0) {
+              id(click_count) = x;
+            }
+            id(clean_mqtt_click_count_correction).execute();
+    internal: true
 
 # ------------------------------------------------------------------------------
 
@@ -246,69 +264,82 @@ button:
 
   # Кнопка
   - platform: template
-    name: ${name}_button
+    name: ${location}_${room}_${name}_button
     id: virtual_button
     on_press:
       - logger.log: 'Button pressed!'
-      # Стираем состояние кнопки перед выполнением
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button/command
-          payload:
-          retain: true
-      # Стираем состояние кнопки перед выполнением
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button_turbo/command
-          payload:
-          retain: true
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      # Уходим спать сразу после пшика если режим сна не отключен
-      - if:
-          condition:
-            lambda: 'return id(check_sleep_button).state;'
-          then:
-            - logger.log: 'Stay awake because the sleep button is pressed'
-          else:
-            - deep_sleep.enter: deep_sleep_mode
+      - script.execute: clean_mqtt_click_buttons
+      - script.execute: click
+      - script.wait: click
+      - script.execute: go_sleep
     internal: true
 
   # Турбо кнопка
   - platform: template
-    name: ${name}_button_turbo
+    name: ${location}_${room}_${name}_button_turbo
     id: virtual_button_turbo
     on_press:
       - logger.log: 'Button Turbo pressed!'
-      # Стираем состояние кнопки перед выполнением
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button/command
-          payload:
-          retain: true
-      # Стираем состояние кнопки перед выполнением
-      - mqtt.publish:
-          topic: ${topic}/button/${name}_button_turbo/command
-          payload:
-          retain: true
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
+      - script.execute: clean_mqtt_click_buttons
+      - script.execute: click
+      - script.wait: click
       - delay: 1s
-      - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
-      - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
+      - script.execute: click
+      - script.wait: click
       - delay: 1s
+      - script.execute: click
+      - script.wait: click
+      - script.execute: go_sleep
+    internal: true
+
+  # Кнопка остановки deep sleep
+  - platform: template
+    name: ${location}_${room}_${name}_deepsleep_stop
+    id: deep_sleep_mode_stop
+    on_press:
+      - logger.log: 'Button Deep Sleep Stop pressed!'
+      - deep_sleep.prevent: deep_sleep_mode
+      - script.execute: clean_mqtt_deepsleep_stop
+    internal: true
+
+  # Кнопка сброса счетчика
+  - platform: template
+    name: ${location}_${room}_${name}_button_count_reset
+    icon: mdi:restore-alert
+    id: virtual_button_count_reset
+    on_press:
+      - logger.log: 'Button Count Reset pressed!'
+      - script.execute: clean_click_count
+      - script.execute: clean_mqtt_button_count_reset
+    internal: true
+
+  # Кнопка перезагрузки
+  - platform: restart
+    name: ${location}_${room}_${name}_reboot
+    id: reboot
+    icon: mdi:restart
+
+  # Кнопка выключения
+  - platform: shutdown
+    name: shutdown
+    id: halt
+    internal: true
+
+# ------------------------------------------------------------------------------
+
+script:
+
+  # Пшик
+  - id: click
+    then:
       - switch.turn_on: motor
-      - delay: !lambda "return (id(${name}_motor_time).state);"
+      - delay: !lambda "return (id(motor_time).state);"
       - switch.turn_off: motor
-      # Добавляем нажатие в счетчик
-      - number.increment: click_count
-      # Уходим спать сразу после пшика если режим сна не отключен
+      - script.execute: click_count_increment
+
+  # Ложимся спать если сон не запрещен
+  - id: go_sleep
+    then:
       - if:
           condition:
             lambda: 'return id(check_sleep_button).state;'
@@ -316,47 +347,52 @@ button:
             - logger.log: 'Stay awake because the sleep button is pressed'
           else:
             - deep_sleep.enter: deep_sleep_mode
-    internal: true
 
-  # Кнопка остановки deep sleep
-  - platform: template
-    name: ${name}_deepsleep_stop
-    id: deep_sleep_mode_stop
-    on_press:
-      - logger.log: 'Button Deep Sleep Stop pressed!'
-      # Стираем состояние кнопки перед выполнением
+  # Добавить +1 в счетчик пшиков
+  - id: click_count_increment
+    then:
+      - lambda: |-
+          id(click_count) += 1;
+
+  # Обнулить счетчик пшиков
+  - id: clean_click_count
+    then:
+      - lambda: |-
+          id(click_count) = 0;
+
+  # Стереть MQTT - Нажатие кнопкок пшиков
+  - id: clean_mqtt_click_buttons
+    then:
       - mqtt.publish:
-          topic: ${topic}/button/${name}_deepsleep_stop/command
+          topic: ${topic}/button/button/command
           payload:
           retain: true
-      - deep_sleep.prevent: deep_sleep_mode
-    internal: true
-
-  # Кнопка сброса счетчика
-  - platform: template
-    name: ${name}_button_count_reset
-    icon: mdi:restore-alert
-    id: virtual_button_count_reset
-    on_press:
-      - logger.log: 'Button Count Reset pressed!'
-      # Стираем состояние кнопки перед выполнением
       - mqtt.publish:
-          topic: ${topic}/button/${name}_button_count_reset/command
+          topic: ${topic}/button/button_turbo/command
           payload:
           retain: true
-      - number.to_min:
-          id: click_count
-    internal: true
 
-  # Кнопка перезагрузки
-  - platform: restart
-    name: ${name}_reboot
-    icon: mdi:restart
+  # Стереть MQTT - Нажатие кнопки сброса счетчика пшиков
+  - id: clean_mqtt_button_count_reset
+    then:
+      - mqtt.publish:
+          topic: ${topic}/button/button_count_reset/command
+          payload:
+          retain: true
 
-  # Кнопка выключения
-  - platform: shutdown
-    name: ${name}_shutdown
-    id: ${name}_shutdown
-    internal: true
+  # Стереть MQTT - Нажатие кнопки остановки сна
+  - id: clean_mqtt_deepsleep_stop
+    then:
+      - mqtt.publish:
+          topic: ${topic}/button/deepsleep_stop/command
+          payload:
+          retain: true
 
-# ------------------------------------------------------------------------------
+  # Стереть MQTT - Коррекция
+  - id: clean_mqtt_click_count_correction
+    then:
+      - mqtt.publish:
+          topic: ${topic}/click_count_correction
+          payload:
+          retain: true
+

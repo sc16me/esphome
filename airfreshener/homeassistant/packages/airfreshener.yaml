@@ -1,4 +1,4 @@
-airfreshener:
+home_airfreshener:
 
     mqtt:
       button:
@@ -6,25 +6,25 @@ airfreshener:
         - unique_id: home_toilet_airfreshener_button
           name: 'Пшик освежителем'
           icon: mdi:spray
-          command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button/command'
+          command_topic: 'esphome/home/toilet/airfreshener/button/button/command'
           retain: true
 
         - unique_id: home_toilet_airfreshener_button_turbo
           name: 'Пшик освежителем 3x'
           icon: mdi:spray
-          command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button_turbo/command'
+          command_topic: 'esphome/home/toilet/airfreshener/button/button_turbo/command'
           retain: true
 
         - unique_id: home_toilet_airfreshener_deepsleep_stop
           name: 'Запрет сна'
           icon: mdi:sleep-off
-          command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_deepsleep_stop/command'
+          command_topic: 'esphome/home/toilet/airfreshener/button/deepsleep_stop/command'
           retain: true
         
         - unique_id: home_toilet_airfreshener_button_count_reset
           name: 'Замена баллона'
           icon: mdi:restore-alert
-          command_topic: 'esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button_count_reset/command'
+          command_topic: 'esphome/home/toilet/airfreshener/button/button_count_reset/command'
           retain: true
 
 
@@ -33,7 +33,7 @@ airfreshener:
       # Датчик ночи для освежителя
       - platform: tod
         name: home_toilet_airfreshener_night
-        after: '03:00' # да, мы поздно ложимся
+        after: '02:00' # да, мы поздно ложимся
         before: '07:00' # а иногда рано встаем
 
 
@@ -49,40 +49,68 @@ airfreshener:
     #         auto_off: 3
     #         state: "true"
 
+
 # Автоматизации
     automation:
 
-      # Если свет включается, удаляем топики кнопки и турбо-кнопки
-      # Тем самым если освежитель проснется в момент когда свет включен = кто-то в туалете
-      # то он не пшикнет, т.к. команд пшикнуть нет
-        - alias: Освежитель воздуха - Не пшикать когда туалет занят
-          id: home_toilet_airfreshener_automation_dont-shoot
-          mode: single
+        # Если свет в туалете горит дольше 20 секунд
+        # Ждем пока погаснет
+        # Считаем время и пшикаем в зависимости от времени
+        - alias: Дом - Освежитель воздуха
+          id: home_toilet_airfreshener_automation
+          mode: restart
           trigger:
             - platform: state
               entity_id:
-                # Выключатель света - туалет
                 - switch.home_toilet_switch
-              from: 'off'
-              to: 'on'
+              from: "off"
+              to: "on"
           action:
+            - variables:
+                time_of_start: "{{ now () . timestamp() }}"
             - service: mqtt.publish
               data:
                 topic: >-
-                  esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button/command
+                  esphome/home/toilet/airfreshener/button/button/command
                 retain: true
-                payload: ''
+                payload: ""
             - service: mqtt.publish
               data:
                 topic: >-
-                  esphome/home/toilet/airfreshener/button/home_toilet_airfreshener_button_turbo/command
+                  esphome/home/toilet/airfreshener/button/button_turbo/command
                 retain: true
-                payload: ''
+                payload: ""
+            - wait_for_trigger:
+                - platform: state
+                  entity_id:
+                    - switch.home_toilet_switch
+                  from: "on"
+                  to: "off"
+            - variables:
+                time_of_end: "{{ now () . timestamp() }}"
+            - variables:
+                time_difference_seconds: "{{ (time_of_end | float - time_of_start | float) | round(0) }}"
+            - if:
+                - condition: template
+                  value_template: "{{ time_difference_seconds > 20 and time_difference_seconds < 120 }}"
+              then:
+                - service: button.press
+                  data: {}
+                  target:
+                    entity_id: button.home_toilet_airfreshener_button
+            - if:
+                - condition: template
+                  value_template: "{{ time_difference_seconds > 120 }}"
+              then:
+                - service: button.press
+                  data: {}
+                  target:
+                    entity_id: button.home_toilet_airfreshener_button_turbo
 
 
         # Если состояние группы меняется на "дома", тогда пшикнуть
         # Если конечно в туалете никого нет, что проверяем по свету
-        - alias: Освежитель воздуха - Пшикнуть когда мы пришли домой
+        - alias: Дом - Освежитель воздуха - Пшикнуть когда мы пришли домой
           id: home_toilet_airfreshener_automation_welcome-home
           mode: single
           trigger:
@@ -104,72 +132,8 @@ airfreshener:
                 entity_id: button.home_toilet_airfreshener_button
 
 
-        # Если свет в туалете горит дольше 20 секунд
-        # Ждем пока погаснет, но не более 2 минут (1.59)
-        # Пшикаем если все условия соблюдены
-        - alias: Освежитель воздуха - Пись-пись
-          id: home_toilet_airfreshener_automation_1x
-          mode: restart
-          trigger:
-            - platform: state
-              entity_id:
-                # Выключатель света - туалет
-                - switch.home_toilet_switch
-              from: 'off'
-              to: 'on'
-              for:
-                hours: 0
-                minutes: 0
-                seconds: 20
-          action:
-            - wait_for_trigger:
-                - platform: state
-                  entity_id:
-                    # Выключатель света - туалет
-                    - switch.home_toilet_switch
-                  from: 'on'
-                  to: 'off'
-              continue_on_timeout: false
-              timeout: '00:01:59'
-            - service: button.press
-              data: {}
-              target:
-                entity_id: button.home_toilet_airfreshener_button
-
-
-        # Если свет в туалете включен более 2-х минут, тогда
-        # ждем пока свет выключится
-        # и пшикаем 3 раза (жмем 1 раз турбо-кнопку)
-        - alias: Освежитель воздуха - Пись-как
-          id: home_toilet_airfreshener_automation_3x
-          mode: restart
-          trigger:
-            - platform: state
-              entity_id:
-                # Выключатель света - туалет
-                - switch.home_toilet_switch
-              from: 'off'
-              to: 'on'
-              for:
-                hours: 0
-                minutes: 2
-                seconds: 0
-          action:
-            - wait_for_trigger:
-                - platform: state
-                  entity_id:
-                    # Выключатель света - туалет
-                    - switch.home_toilet_switch
-                  from: 'on'
-                  to: 'off'
-            - service: button.press
-              data: {}
-              target:
-                entity_id: button.home_toilet_airfreshener_button_turbo
-
-
         # Передаем в MQTT статус ночь для освежителя
-        - alias: MQTT - Освежитель воздуха - Статус ночи
+        - alias: Дом - Освежитель воздуха - MQTT - Статус ночи
           id: home_toilet_airfreshener_automation_night-mode
           mode: single
           trigger:
@@ -179,7 +143,7 @@ airfreshener:
           action:
             - service: mqtt.publish
               data:
-                topic: mqtt/esphome/home/toilet/airfreshener/night
+                topic: home/mqtt/status/night
                 # К сожалению по каким-то причинам esp тупо читает есть что-то в топике или нет
                 # Поэтому если ночь то ON
                 # Если день, то стираем топик
@@ -189,46 +153,55 @@ airfreshener:
                 retain: true
 
 
-        # Уведомление о замене баллона в телеграм
-        - alias: Уведомление - Освежитель воздуха - Пора менять баллон
-          id: home_toilet_airfreshener_automation_change-balloon
+        # Уведомления в телеграм
+        - alias: Дом - Освежитель воздуха - Уведомления
+          id: home_toilet_airfreshener_automation_notify
           mode: single
           trigger:
             - platform: state
               entity_id:
                 - sensor.home_toilet_airfreshener_balloon_level
-              to: '10'
-          action:
-            # Телеграм бот
-            - service: notify.telegram_aleksandr
-              data:
-                message: |
-                  В освежителе воздуха заканчивается баллон!
-                  Осталось: {{states('sensor.home_toilet_airfreshener_balloon_level') }}%
-            - service: notify.telegram_anna
-              data:
-                message: |
-                  В освежителе воздуха заканчивается баллон!
-                  Осталось: {{states('sensor.home_toilet_airfreshener_balloon_level') }}%
-                  Анна, пожалуйста позаботьтесь чтобы у нас было на что его поменять ❤️
-
-
-        # Уведомление о замене аккумулятора в телеграм
-        - alias: Уведомление - Освежитель воздуха - Пора менять батарею
-          id: home_toilet_airfreshener_automation_change-battery
-          mode: single
-          trigger:
+              to: "15"
+              id: balloon
             - platform: numeric_state
               entity_id: sensor.home_toilet_airfreshener_battery_voltage
-              below: '3.30'
+              below: "3.20"
               for:
                 hours: 0
                 minutes: 40
                 seconds: 0
+              id: battery
           action:
-            # Телеграм бот
-            - service: notify.telegram_aleksandr
-              data:
-                message: |
-                  В освежителе воздуха садится аккумулятор!
-                  Текущего заряда хватит на один день!
+            - if:
+                - condition: trigger
+                  id:
+                    - balloon
+              then:
+                - service: notify.telegram_aleksandr
+                  data:
+                    message: >
+                      В освежителе воздуха заканчивается баллон!
+          
+                      Осталось: {{states('sensor.home_toilet_airfreshener_balloon_level')
+                      }}%
+                - service: notify.telegram_anna
+                  data:
+                    message: >
+                      В освежителе воздуха заканчивается баллон!
+          
+                      Осталось: {{states('sensor.home_toilet_airfreshener_balloon_level')
+                      }}%
+          
+                      Анна, пожалуйста позаботьтесь чтобы у нас было на что его поменять
+                      ❤️
+            - if:
+                - condition: trigger
+                  id:
+                    - battery
+              then:
+                - service: notify.telegram_aleksandr
+                  data:
+                    message: |
+                      В освежителе воздуха садится аккумулятор!
+                      Текущего заряда хватит на один день!
+
