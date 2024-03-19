@@ -2,12 +2,12 @@ substitutions: # Будем использовать как константы
   name: 'airfreshener'
   location: 'home'
   room: 'toilet'
-  comment: 'Освежитель воздуха (Дом-Туалет)'
+  comment: 'Освежитель воздуха'
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
   night_topic: 'home/mqtt/status/night' # Откуда брать статус ночь
   update_time: '1s' # Интервал обновления для параметров
   sleep: '15min' # Длительность режима сна
-  wake: '3s' # Длительность бодрствования
+  wake: '3400ms' # Длительность бодрствования (подбирается индивидуально, главное чтоб успел 3-и раза пшикнуть до сна)
   night_sleep: '60min' # Длительность режима сна ночью
   max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
   min_motor_time: '10' # Минимальное время работы мотора в мс
@@ -21,10 +21,6 @@ esphome:
   project:
       name: "Santa-Claus_16.AirFreshener"
       version: "1.1"
-
-  platform: ESP8266
-  board: esp01_1m
-  esp8266_restore_from_flash: true
 
   on_boot:
     # Идем спать даже если нет подключений к Wi-Fi или MQTT
@@ -53,6 +49,10 @@ esphome:
                 then: # Если MQTT нет, ложимся спать.
                   - logger.log: 'Do bats eat cats?'
                   - deep_sleep.enter: deep_sleep_mode
+
+esp8266:
+  board: esp8285
+  restore_from_flash: true
 
 wifi:
   ssid: !secret ssid
@@ -271,7 +271,6 @@ button:
       - script.execute: clean_mqtt_click_buttons
       - script.execute: click
       - script.wait: click
-      - script.execute: go_sleep
     internal: true
 
   # Турбо кнопка
@@ -289,7 +288,6 @@ button:
       - delay: 1s
       - script.execute: click
       - script.wait: click
-      - script.execute: go_sleep
     internal: true
 
   # Кнопка остановки deep sleep
@@ -395,4 +393,3 @@ script:
           topic: ${topic}/click_count_correction
           payload:
           retain: true
-
