@@ -1,18 +1,21 @@
-substitutions: # Будем использовать как константы
+substitutions:
+
   name: 'airfreshener'
   location: 'home'
   room: 'toilet'
+
   comment: 'Освежитель воздуха'
+
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
-  night_topic: 'home/mqtt/status/night' # Откуда брать статус ночь
+  night_topic: 'home/mqtt/deep_night' # Откуда брать статус ночь
   update_time: '1s' # Интервал обновления для параметров
-  sleep: '15min' # Длительность режима сна
+
+  sleep: '10min' # Длительность режима сна
   wake: '3400ms' # Длительность бодрствования (подбирается индивидуально, главное чтоб успел 3-и раза пшикнуть до сна)
   night_sleep: '60min' # Длительность режима сна ночью
-  max_click: '2400' # Количество пшиков в баллоне (Airwick 2400)
-  min_motor_time: '10' # Минимальное время работы мотора в мс
-  max_motor_time: '180' # Максимальное время работы мотора в мс
-  step_motor_time: '10' # Шаг слайдера времени работы мотора в мс
+
+  pin_motor: GPIO14 # Пин управляющий мотором (транзистором)
+
 
 esphome:
   name: ${name}
@@ -21,6 +24,9 @@ esphome:
   project:
       name: "Santa-Claus_16.AirFreshener"
       version: "1.1"
+
+  platformio_options:
+    build_flags: -DBEARSSL_SSL_BASIC -DMMU_IRAM_SIZE=0xC000 -DMMU_ICACHE_SIZE=0x4000 -DMMU_IRAM_HEAP
 
   on_boot:
     # Идем спать даже если нет подключений к Wi-Fi или MQTT
@@ -70,6 +76,7 @@ logger:
   baud_rate: 0
 
 ota:
+  - platform: esphome
 
 # ------------------------------------------------------------------------------
 
@@ -147,15 +154,14 @@ globals:
 
 # ------------------------------------------------------------------------------
 
-switch:
+output:
 
   # Пин управляющий мотором (транзистором)
   - platform: gpio
-    name: motor
+    pin:
+      number: $pin_motor
+      mode: OUTPUT
     id: motor
-    pin: GPIO14
-    restore_mode: ALWAYS_OFF
-    internal: true
 
 # ------------------------------------------------------------------------------
 
@@ -164,14 +170,31 @@ number:
   # Слайдер времени работы мотора при пшике
   - platform: template
     name: ${location}_${room}_${name}_motor_time
-    id: motor_time
     icon: mdi:timer-cog
+    id: motor_time
     optimistic: true
-    min_value: ${min_motor_time}
-    max_value: ${max_motor_time}
-    step: ${step_motor_time}
     restore_value: true
-    entity_category: "diagnostic"
+    mode: box
+    unit_of_measurement: "ms"
+    entity_category: "config"
+    initial_value: 100
+    min_value: 10
+    max_value: 180
+    step: 10
+
+  # Вместимость баллона в пшиках
+  - platform: template
+    name: ${location}_${room}_${name}_balloon_max_click
+    icon: mdi:spray
+    id: max_click
+    optimistic: true
+    restore_value: true
+    mode: box
+    entity_category: "config"
+    initial_value: 2400
+    min_value: 100
+    max_value: 3000
+    step: 100
     
 # ------------------------------------------------------------------------------
 
@@ -217,7 +240,15 @@ sensor:
       return ((id(battery_voltage).state));
     filters:
       - filter_out: nan
-      - lambda: return ((x - 3.0) / (4.2 - 3.0)) * 100;
+      - lambda: |-
+          float result = ((x - 3.0) / (4.2 - 3.0)) * 100;
+          if (result < 0) {
+            return 0;
+          } else if (result > 100) {
+            return 100;
+          } else {
+            return result;
+          }
 
   # Уровень баллона в процентах
   - platform: template
@@ -231,7 +262,9 @@ sensor:
       return id(click_count);
     filters:
       - filter_out: nan
-      - lambda: return ((((x - 0) / (${max_click} - 0)) * 100) -100) * -1;
+      - lambda: |-
+          float result = ((x / id(max_click).state) * 100 - 100) * -1;
+          return result < 0 ? 0 : result;
 
   # Счетчик пшиков
   - platform: template
@@ -316,6 +349,7 @@ button:
     name: ${location}_${room}_${name}_reboot
     id: reboot
     icon: mdi:restart
+    entity_category: "diagnostic"
 
   # Кнопка выключения
   - platform: shutdown
@@ -330,9 +364,9 @@ script:
   # Пшик
   - id: click
     then:
-      - switch.turn_on: motor
+      - output.turn_on: motor
       - delay: !lambda "return (id(motor_time).state);"
-      - switch.turn_off: motor
+      - output.turn_off: motor
       - script.execute: click_count_increment
 
   # Ложимся спать если сон не запрещен
