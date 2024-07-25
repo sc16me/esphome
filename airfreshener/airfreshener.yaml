@@ -8,11 +8,6 @@ substitutions:
 
   topic: 'esphome/home/toilet/airfreshener' # Желаемый топик устройства
   night_topic: 'home/mqtt/deep_night' # Откуда брать статус ночь
-  update_time: '1s' # Интервал обновления для параметров
-
-  sleep: '10min' # Длительность режима сна
-  wake: '3400ms' # Длительность бодрствования (подбирается индивидуально, главное чтоб успел 3-и раза пшикнуть до сна)
-  night_sleep: '60min' # Длительность режима сна ночью
 
   pin_motor: GPIO14 # Пин управляющий мотором (транзистором)
 
@@ -22,8 +17,8 @@ esphome:
   comment: ${comment}
 
   project:
-      name: "Santa-Claus_16.AirFreshener"
-      version: "1.1"
+      name: 'Santa-Claus_16.AirFreshener'
+      version: '1.1'
 
   platformio_options:
     build_flags: -DBEARSSL_SSL_BASIC -DMMU_IRAM_SIZE=0xC000 -DMMU_ICACHE_SIZE=0x4000 -DMMU_IRAM_HEAP
@@ -42,7 +37,7 @@ esphome:
               - wifi.connected:
           then: # Если Wi-Fi нет, ложимся спать.
             - logger.log: 'Do cats eat bats? Do cats eat bats?'
-            - deep_sleep.enter: deep_sleep_mode
+            - script.execute: go_sleep
           else:
             - wait_until: # Ждем подключения к MQTT
                 condition:
@@ -54,7 +49,13 @@ esphome:
                     - mqtt.connected:
                 then: # Если MQTT нет, ложимся спать.
                   - logger.log: 'Do bats eat cats?'
-                  - deep_sleep.enter: deep_sleep_mode
+                  - script.execute: go_sleep
+                else: # Ждем 1000мс и ложимся спать если не нужно пшикать
+                  - delay: 1000ms
+                  - lambda: |-
+                      if (id(click_count_cache) == 0) {
+                        id(go_sleep).execute();
+                      }
 
 esp8266:
   board: esp8285
@@ -80,6 +81,38 @@ ota:
 
 # ------------------------------------------------------------------------------
 
+# Глубокий сон
+deep_sleep:
+  id: deep_sleep_mode
+
+# ------------------------------------------------------------------------------
+
+globals:
+
+  # Счетчик пшиков
+  - id: click_count
+    type: int
+    restore_value: yes
+
+  # Счетчик пшиков за пробуждение
+  - id: click_count_cache
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+# ------------------------------------------------------------------------------
+
+output:
+
+  # Пин управляющий мотором (транзистором)
+  - platform: gpio
+    pin:
+      number: $pin_motor
+      mode: OUTPUT
+    id: motor
+
+# ------------------------------------------------------------------------------
+
 # MQTT
 mqtt:
   broker: !secret mqtt_ip
@@ -97,9 +130,6 @@ mqtt:
       payload: 'PRESS'
       then:
         - button.press: deep_sleep_mode_stop
-        - binary_sensor.template.publish:
-            id: check_sleep_button
-            state: ON
 
     # Чтение состояния - была ли нажата кнопка (Кнопка)
     - topic: ${topic}/button/button/command
@@ -121,47 +151,11 @@ mqtt:
 
     # Чтение состояния - ночь
     - topic: ${night_topic}
-      payload: 'ON'
+      payload: 'on'
       then:
-        - if:
-            condition:
-              lambda: 'return id(check_sleep_button).state;'
-            then:
-              - logger.log: 'Stay awake because the sleep button is pressed'
-            else:
-              - delay: ${wake}
-              - logger.log: 'Night, I can sleep a little longer...'
-              - deep_sleep.enter:
-                  id: deep_sleep_mode
-                  sleep_duration: ${night_sleep}
-
-# ------------------------------------------------------------------------------
-
-# Глубокий сон
-deep_sleep:
-  id: deep_sleep_mode
-  sleep_duration: ${sleep}
-  run_duration: ${wake}
-
-# ------------------------------------------------------------------------------
-
-globals:
-
-  # Счетчик пшиков
-  - id: click_count
-    type: int
-    restore_value: yes
-
-# ------------------------------------------------------------------------------
-
-output:
-
-  # Пин управляющий мотором (транзистором)
-  - platform: gpio
-    pin:
-      number: $pin_motor
-      mode: OUTPUT
-    id: motor
+        - binary_sensor.template.publish:
+            id: night
+            state: ON
 
 # ------------------------------------------------------------------------------
 
@@ -175,8 +169,8 @@ number:
     optimistic: true
     restore_value: true
     mode: box
-    unit_of_measurement: "ms"
-    entity_category: "config"
+    unit_of_measurement: 'ms'
+    entity_category: 'config'
     initial_value: 100
     min_value: 10
     max_value: 180
@@ -190,20 +184,56 @@ number:
     optimistic: true
     restore_value: true
     mode: box
-    entity_category: "config"
+    entity_category: 'config'
     initial_value: 2400
     min_value: 100
     max_value: 3000
     step: 100
-    
+
+  # Слайдер времени сна
+  - platform: template
+    name: ${location}_${room}_${name}_sleep_time
+    icon: mdi:timer-cog
+    id: sleep_time
+    optimistic: true
+    restore_value: true
+    mode: box
+    unit_of_measurement: 'min'
+    entity_category: 'config'
+    initial_value: 1
+    min_value: 1
+    max_value: 180
+    step: 1
+
+  # Слайдер времени долгого сна
+  - platform: template
+    name: ${location}_${room}_${name}_longsleep_time
+    icon: mdi:timer-cog
+    id: longsleep_time
+    optimistic: true
+    restore_value: true
+    mode: box
+    unit_of_measurement: 'min'
+    entity_category: 'config'
+    initial_value: 1
+    min_value: 1
+    max_value: 180
+    step: 1
+
 # ------------------------------------------------------------------------------
 
 binary_sensor:
 
-  # Сенсор нажатия кнопоки сна
+  # Сенсор нажатия кнопки остановки сна
   - platform: template
     name: check_sleep_button
     id: check_sleep_button
+    internal: true
+
+  # Сенсор ночи
+  - platform: template
+    name: night
+    id: night
     internal: true
 
 # ------------------------------------------------------------------------------
@@ -215,7 +245,7 @@ sensor:
     pin: VCC
     name: ${location}_${room}_${name}_battery_voltage
     id: battery_voltage
-    update_interval: ${update_time}
+    update_interval: 1s
     filters:
       - max:
           window_size: 3
@@ -233,8 +263,8 @@ sensor:
     name: ${location}_${room}_${name}_battery_level
     device_class: battery
     state_class: measurement
-    unit_of_measurement: "%"
-    update_interval: ${update_time}
+    unit_of_measurement: '%'
+    update_interval: 1s
     accuracy_decimals: 0
     lambda: |-
       return ((id(battery_voltage).state));
@@ -255,8 +285,8 @@ sensor:
     name: ${location}_${room}_${name}_balloon_level
     icon: mdi:gas-cylinder
     state_class: measurement
-    unit_of_measurement: "%"
-    update_interval: ${update_time}
+    unit_of_measurement: '%'
+    update_interval: 1s
     accuracy_decimals: 0
     lambda: |-
       return id(click_count);
@@ -271,7 +301,7 @@ sensor:
     name: ${location}_${room}_${name}_click_count
     state_class: measurement
     icon: mdi:counter
-    update_interval: ${update_time}
+    update_interval: 1s
     accuracy_decimals: 0
     lambda: |-
       return id(click_count);
@@ -304,6 +334,8 @@ button:
       - script.execute: clean_mqtt_click_buttons
       - script.execute: click
       - script.wait: click
+      - delay: 1s
+      - script.execute: go_sleep
     internal: true
 
   # Турбо кнопка
@@ -321,6 +353,8 @@ button:
       - delay: 1s
       - script.execute: click
       - script.wait: click
+      - delay: 1s
+      - script.execute: go_sleep
     internal: true
 
   # Кнопка остановки deep sleep
@@ -330,6 +364,10 @@ button:
     on_press:
       - logger.log: 'Button Deep Sleep Stop pressed!'
       - deep_sleep.prevent: deep_sleep_mode
+      - binary_sensor.template.publish:
+          id: check_sleep_button
+          state: ON
+      - delay: 1s
       - script.execute: clean_mqtt_deepsleep_stop
     internal: true
 
@@ -349,7 +387,7 @@ button:
     name: ${location}_${room}_${name}_reboot
     id: reboot
     icon: mdi:restart
-    entity_category: "diagnostic"
+    entity_category: 'diagnostic'
 
   # Кнопка выключения
   - platform: shutdown
@@ -365,7 +403,7 @@ script:
   - id: click
     then:
       - output.turn_on: motor
-      - delay: !lambda "return (id(motor_time).state);"
+      - delay: !lambda 'return (id(motor_time).state);'
       - output.turn_off: motor
       - script.execute: click_count_increment
 
@@ -378,13 +416,25 @@ script:
           then:
             - logger.log: 'Stay awake because the sleep button is pressed'
           else:
-            - deep_sleep.enter: deep_sleep_mode
+            - if:
+                condition:
+                  lambda: 'return id(night).state;'
+                then:
+                  - logger.log: 'Night, I can sleep a little longer...'
+                  - deep_sleep.enter:
+                      id: deep_sleep_mode
+                      sleep_duration: !lambda 'return id(longsleep_time).state * 60 * 1000;'
+                else:
+                  - deep_sleep.enter:
+                      id: deep_sleep_mode
+                      sleep_duration: !lambda 'return id(sleep_time).state * 60 * 1000;'
 
   # Добавить +1 в счетчик пшиков
   - id: click_count_increment
     then:
       - lambda: |-
           id(click_count) += 1;
+          id(click_count_cache) += 1;
 
   # Обнулить счетчик пшиков
   - id: clean_click_count
